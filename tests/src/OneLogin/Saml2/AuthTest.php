@@ -46,11 +46,11 @@ class OneLogin_Saml2_AuthTest extends PHPUnit_Framework_TestCase
     */
     public function testGetLastRequestID()
     {
-        $targetSSOURL = $this->_auth->login(null, array(), false, false, true, false);
+        $targetSSOURL = $this->_auth->login(null, array(), false, false, true, false, false);
         $id1 = $this->_auth->getLastRequestID();
         $this->assertNotNull($id1);
 
-        $targetSLOURL = $this->_auth->logout(null, array(), null, null, true, null);
+        $targetSLOURL = $this->_auth->logout(null, array(), null, null, true, null, null);
         $id2 = $this->_auth->getLastRequestID();
         $this->assertNotNull($id2);
 
@@ -196,6 +196,84 @@ class OneLogin_Saml2_AuthTest extends PHPUnit_Framework_TestCase
         $sessionExpiration = $this->_auth->getSessionExpiration();
         $this->assertNotNull($sessionExpiration);
         $this->assertEquals('2655106621', $sessionExpiration);
+    }
+
+    /**
+    * Tests the getAttributes and getAttributesWithFriendlyName methods
+    * @covers OneLogin_Saml2_Auth::getAttributes
+    * @covers OneLogin_Saml2_Auth::getAttribute
+    * @covers OneLogin_Saml2_Auth::getAttributesWithFriendlyName
+    * @covers OneLogin_Saml2_Auth::getAttributeWithFriendlyName
+     */
+    public function testGetAttributes()
+    {
+        $auth = new OneLogin_Saml2_Auth($this->_settingsInfo);
+
+        $response = file_get_contents(TEST_ROOT . '/data/responses/response6.xml.base64');
+        $_POST['SAMLResponse'] = $response;
+        $auth->processResponse();
+
+        $expectedAttributes = array(
+            'urn:oid:0.9.2342.19200300.100.1.1' => array(
+                'demo'
+            ),
+            'urn:oid:2.5.4.42' => array(
+                'value'
+            ),
+        );
+        $expectedFriendlyNameAttributes = array(
+            'uid' => array(
+                'demo'
+            ),
+            'givenName' => array(
+                'value'
+            ),
+        );
+        $this->assertEquals($expectedAttributes, $auth->getAttributes());
+        $this->assertEquals($expectedFriendlyNameAttributes, $auth->getAttributesWithFriendlyName());
+
+        $this->assertNull($auth->getAttribute('givenName'));
+        $this->assertEquals(array('value'), $auth->getAttributeWithFriendlyName('givenName'));
+
+        $this->assertEquals(array('value'), $auth->getAttribute('urn:oid:2.5.4.42'));
+        $this->assertNull($auth->getAttributeWithFriendlyName('urn:oid:2.5.4.42'));
+
+        // An assertion that has no attributes should return an empty array when asked for the attributes
+        $response2 = file_get_contents(TEST_ROOT . '/data/responses/response2.xml.base64');
+        $_POST['SAMLResponse'] = $response2;
+        $auth2 = new OneLogin_Saml2_Auth($this->_settingsInfo);
+        $auth2->processResponse();
+        $this->assertEmpty($auth2->getAttributes());
+        $this->assertEmpty($auth2->getAttributesWithFriendlyName());
+
+        // Encrypted Attributes are not supported
+        $response3 = file_get_contents(TEST_ROOT . '/data/responses/invalids/encrypted_attrs.xml.base64');
+        $_POST['SAMLResponse'] = $response3;
+        $auth3 = new OneLogin_Saml2_Auth($this->_settingsInfo);
+        $auth3->processResponse();
+        $this->assertEmpty($auth3->getAttributes());
+        $this->assertEmpty($auth3->getAttributesWithFriendlyName());
+
+        // Duplicated Attribute names
+        $response4 = file_get_contents(TEST_ROOT . '/data/responses/invalids/duplicated_attributes_with_friendly_names.xml.base64');
+        $_POST['SAMLResponse'] = $response4;
+        $auth4 = new OneLogin_Saml2_Auth($this->_settingsInfo);
+        try {
+            $auth4->processResponse();
+            $this->fail('OneLogin_Saml2_ValidationError was not raised');
+        } catch (OneLogin_Saml2_ValidationError $e) {
+            $this->assertContains('Found an Attribute element with duplicated FriendlyName', $e->getMessage());
+        }
+
+        $response5 = file_get_contents(TEST_ROOT . '/data/responses/invalids/duplicated_attributes.xml.base64');
+        $_POST['SAMLResponse'] = $response5;
+        $auth5 = new OneLogin_Saml2_Auth($this->_settingsInfo);
+        try {
+            $auth5->processResponse();
+            $this->fail('OneLogin_Saml2_ValidationError was not raised');
+        } catch (OneLogin_Saml2_ValidationError $e) {
+            $this->assertContains('Found an Attribute element with duplicated Name', $e->getMessage());
+        }
     }
 
     /**
